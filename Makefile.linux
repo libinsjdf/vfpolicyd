@@ -1,0 +1,11 @@
+CC=		gcc
+OBJS=		vfpolicyd.o
+BIN=		vfpolicyd
+CFLAGS+=	-Wall -Werror
+LDFLAGS+=	-lev
+
+default:	$(OBJS)
+		$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $(BIN)
+clean:
+	rm -f *.o
+	rm -f $(BIN)
