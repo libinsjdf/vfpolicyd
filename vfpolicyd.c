@@ -36,6 +36,7 @@
 #include <arpa/inet.h>
 
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
@@ -44,6 +45,7 @@
 #include <err.h>
 /* libev is needed */
 #include <ev.h>
+#include "log.h"
 
 /* modify values here */
 #define INPUTBUF	50
@@ -311,11 +313,15 @@ main(int argc, char *argv[])
 	fprintf(stderr, "[X] Virtua's Flash Policy Daemon\n\n");
 	fprintf(stderr, "\t[+] Backend decision process:\n");
 
+	/*log file*/
+	logger_init(LOG_INFO, "vfpolicyd.log");
+
 	/* backend decision process */
 	backend = backend_supported();
 
 	switch(backend) {
 		case 1:
+			log_info(stderr, "\t\t[-] KQUEUE is supported ! we enable it.\n");
 			fprintf(stderr, "\t\t[-] KQUEUE is supported ! we enable it.\n");
 			loop = ev_default_loop(EVBACKEND_KQUEUE);
 			break;
@@ -376,6 +382,7 @@ main(int argc, char *argv[])
 		ev_io_stop(loop, &net_watch);
 	}
 	/* never returns.. */
+	logger_close();
 	return 0;
 }
 /* EOP */
