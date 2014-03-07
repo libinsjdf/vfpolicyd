@@ -1,33 +1,3 @@
-/* Copyright (c) 2008, Virtua SA <community AT virtua DOT ch>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the <organization> nor the
- *       names of its contributors may be used to endorse or promote products
- *       derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY Virtua SA ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL Virtua SA BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/*
- * THIS IS A BETA VERSION 
- */
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -45,6 +15,8 @@
 #include <err.h>
 /* libev is needed */
 #include <ev.h>
+#include <stdbool.h>
+
 #include "log.h"
 
 /* modify values here */
@@ -56,18 +28,19 @@
 #else
 #define debug(...) do {} while(0)
 #endif
+#define TRUE 0
 
 /* globals, defs */
 static void 	usage(char *);
-static int 		backend_supported(void);
-static int		set_nb_fd(int);
-static int 		send_policy(int);
-static void		timeout_cb(struct ev_loop *cl, struct ev_timer *w, int); 
+static int 	backend_supported(void);
+static int	set_nb_fd(int);
+static int 	send_policy(int);
+static void	timeout_cb(struct ev_loop *cl, struct ev_timer *w, int); 
 static void 	client_cb(EV_P_ struct ev_io *w, int);
 static void 	net_cb(EV_P_ struct ev_io *w, int);
 
-static char 	sendbuf[1500];
-
+static char 	sendbuf[1500] = {0};
+int log_level = 0;
 ev_timer	timeout_watch;
 ev_io		net_watch;
 ev_io 		client_watch;
@@ -78,13 +51,11 @@ ev_io 		client_watch;
  * just informs to stderr
  * what we will do
  */
-static void
-usage(char *prg)
-{
+static void usage(char *prg) {
 	fprintf(stderr, "%s is designed to send a policy to flash clients.\n\n", prg);
 	
 	fprintf(stderr, "Usage:\n");
-	fprintf(stderr, "%s -p <port> -f <policy.xml>\n", prg);
+	fprintf(stderr, "%s -p <port> -f <policy.xml> -l [loglevel<0|1|2|3>]\n", prg);
 	fprintf(stderr, "<port>\t\t: listening port\n"); 
 	fprintf(stderr, "<policy.xml>\t: policy file to send\n"); 
 }
@@ -97,18 +68,18 @@ usage(char *prg)
  *			1 = kqueue
  *			2 = epoll
  */
-static int
-backend_supported(void)
-{
+static int backend_supported(void) {
 	unsigned int kqueue = 1;
 	unsigned int epoll = 2;
 	unsigned int backend = 0;
 
-	if ((ev_supported_backends() & EVBACKEND_EPOLL) == 4)
-        backend = epoll;
+	if ((ev_supported_backends() & EVBACKEND_EPOLL) == 4) {
+        	backend = epoll;
+	}
 
-	if ((ev_supported_backends() & EVBACKEND_KQUEUE) == 8)
+	if ((ev_supported_backends() & EVBACKEND_KQUEUE) == 8) {
 		backend = kqueue;
+	}
 
 	return backend;
 }
@@ -118,19 +89,19 @@ backend_supported(void)
  *
  * sets fd to non-blocking mode
  */
-static int
-set_nb_fd(int fd)
-{
-    int flags;
+static int set_nb_fd(int fd) {
+	int flags;
 
-    flags = fcntl(fd, F_GETFL);
-    if (flags < 0)
-        return flags;
-    flags |= O_NONBLOCK;
-    if (fcntl(fd, F_SETFL, flags) < 0)
-        return -1;
+	flags = fcntl(fd, F_GETFL);
+	if (flags < 0) {
+		return flags;
+	}
+	flags |= O_NONBLOCK;
+	if (fcntl(fd, F_SETFL, flags) < 0) {
+		return -1;
+	}
 
-    return 0;
+	return 0;
 }
 
 /* send_policy
@@ -139,30 +110,29 @@ set_nb_fd(int fd)
  * send policy to our client
  * returns length of recv buffer 
  */
-static int
-send_policy(int sock)
-{
-	static char rcvbuf[INPUTBUF];
-	static char token[50];
-	size_t	len;
+static int send_policy(int sock) {
+	static char rcvbuf[INPUTBUF] = {0};
+	static char token[50] = {0};
+	size_t len = 0;
 
 	/* nullify our chains */
-	memset(rcvbuf, 0, sizeof(rcvbuf));
-	memset(token, 0, sizeof(token));
+	//memset(rcvbuf, 0, sizeof(rcvbuf));
+	//memset(token, 0, sizeof(token));
 
 	/* compute our token */
 	snprintf(token, 23, "<policy-file-request/>");
 	/* see what's our client has to say */
 	len = recv(sock, rcvbuf, INPUTBUF, 0);
 
-	if (len == 0)
+	if (len == 0) {
 		return 0;
+	}
 
 	/* check if we can send our policy */
 	if (strncmp(rcvbuf, token, 23) == 0) {
-    	/* answering */
-		fprintf(stderr, "\t\t[*] sending policy file\n");
-    	send(sock, sendbuf, sizeof(sendbuf), 1);
+    		/* answering */
+		log_info( "LOG_INFO: sending policy file\n");
+    		send(sock, sendbuf, sizeof(sendbuf), 1);
 	}
 	return len;
 }
@@ -172,10 +142,8 @@ send_policy(int sock)
  *
  * unloop on timeout
  */  
-static void
-timeout_cb(EV_P_ struct ev_timer *w, int revents)
-{
-	fprintf(stderr, "\t\t[-] timeout: disconnecting client\n");
+static void timeout_cb(EV_P_ struct ev_timer *w, int revents) {
+	log_warn("LOG_WARN: timeout: disconnecting client\n");
 	ev_unloop(EV_A_ EVUNLOOP_ONE);
 }
 
@@ -185,17 +153,18 @@ timeout_cb(EV_P_ struct ev_timer *w, int revents)
  * disconnects client
  * stop timer 
  */ 
-static void
-client_cb(EV_P_ struct ev_io *w, int revents)
-{
+static void client_cb(EV_P_ struct ev_io *w, int revents) {
 	/* disconnect after recv'd answer */
-	if (send_policy(w->fd) < 0)
+	if (send_policy(w->fd) < 0) {
+		close(w->fd);
+		logger_close();
 		exit(1);
+	}
 
 	/* stop the timer here before unlooping */ 
 	ev_timer_stop(loop, &timeout_watch);
 	ev_unloop(EV_A_ EVUNLOOP_ONE);
-	fprintf(stderr, "\t\t[-] disconnected\n");
+	log_info("LOG_INFO: disconnected\n");
 }
 
 /* net_cb
@@ -204,9 +173,7 @@ client_cb(EV_P_ struct ev_io *w, int revents)
  * verifies tcp negociation
  * starts client loop on event
  */ 
-static void
-net_cb (EV_P_ struct ev_io *w, int revents)
-{
+static void net_cb (EV_P_ struct ev_io *w, int revents) {
 	struct sockaddr_in addr;
 	struct ev_loop *client_loop;
 
@@ -217,10 +184,14 @@ net_cb (EV_P_ struct ev_io *w, int revents)
 
 	/* accept S/A */
 	if ((sock = accept(w->fd, (struct sockaddr*) &addr, &len)) < 0) {
-		if (EINTR == errno) { return; }
+		if (EINTR == errno) {
+			return; 
+		}
+		close(sock);
+		logger_close();
 		err(1, "accept");	
 	}
-	fprintf(stderr, "\t\t[-] %s connected\n", inet_ntoa(addr.sin_addr));
+	log_info("LOG_INFO: %s connected\n", inet_ntoa(addr.sin_addr));
 
 	/* handle our client */
 
@@ -263,32 +234,41 @@ net_cb (EV_P_ struct ev_io *w, int revents)
  *
  * here is the main loop 
  */
-int
-main(int argc, char *argv[])
-{
-	struct sockaddr_in listen_addr;
-	struct ev_loop *loop;
+int main(int argc, char *argv[]) {
+	struct sockaddr_in listen_addr = {0};
+	struct ev_loop *loop = NULL;
+	struct linger tcp_linger ={0};
 	int sock = 0;
-	int reuseaddr_on = 0;
+	//int reuseaddr_on = 1;
 	int backend = 0;
-	int arg = 0, p = 0, f = 0;
+	int arg = 0;
+	int p = 0;
+	int f = 0;
+	int l = 0;
 	unsigned short sport = 0;
-	char	policyfn[80];	
-
-	FILE        *policy;
-   
+	char	policyfn[80] = {0};	
+	//int log_level = 0;
+	FILE        *policy = NULL;
+	tcp_linger.l_linger = 0;
+	tcp_linger.l_onoff = 0;
 	/* clearing structure */
-	memset(&listen_addr, 0, sizeof(listen_addr));
-	memset(sendbuf, 0, sizeof(sendbuf));
-	memset(policyfn, 0, sizeof(policyfn));
+	//memset(&listen_addr, 0, sizeof(listen_addr));
+	//memset(sendbuf, 0, sizeof(sendbuf));
+	//memset(policyfn, 0, sizeof(policyfn));
+	
+	
+	/*create child process &  checking args */
+	if (daemon(1,1) < 0){
+		printf("create daemon fail\n");
+		exit(1);
+	}
 
-	/* checking args */
 	if (argc < 2) {
 		usage(argv[0]);
 		exit(1);
 	}
 
-	while ((arg = getopt(argc, argv, "p:f:h")) != -1) {
+	while ((arg = getopt(argc, argv, "p:f:l:h")) != -1) {
 		switch (arg) {
 			case 'p':
 				sport=atoi(optarg);
@@ -298,6 +278,10 @@ main(int argc, char *argv[])
 				strncpy(policyfn, optarg, (sizeof(policyfn) - 1));
 				f++;
 				break;
+			case 'l':
+				log_level = atoi(optarg);
+				l++;
+				break;
 			case 'h':
 			default:
 				usage(argv[0]);
@@ -305,71 +289,99 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (!p || !f) {
-		fprintf(stderr, "Sorry we needs both -p and -f specified!\n");
-		exit(0);
+	if (!p || !f || !l) {
+		fprintf(stderr, "Sorry we needs both -p and -f and -l specified!\n");
+		exit(1);
 	}
-		 
-	fprintf(stderr, "[X] Virtua's Flash Policy Daemon\n\n");
-	fprintf(stderr, "\t[+] Backend decision process:\n");
 
 	/*log file*/
-	logger_init(LOG_INFO, "vfpolicyd.log");
+	if (log_level < 0 || log_level > 3) {
+		fprintf(stderr, "log level must be one of 0 1 2 3\n");
+		exit(1);
+	}
+
+	if(logger_init(log_level, LOG_PATH) < 0 ){
+		printf("init log fail,please kill process and restart process\n");
+		logger_close();
+		exit(1);
+	}	
+	log_debug("LOG_DEBUG: Flash Policy Daemon been start:\n");
+	log_debug("LOG_DEBUG: Backend decision process:\n");
+
 
 	/* backend decision process */
 	backend = backend_supported();
 
 	switch(backend) {
 		case 1:
-			log_info(stderr, "\t\t[-] KQUEUE is supported ! we enable it.\n");
-			fprintf(stderr, "\t\t[-] KQUEUE is supported ! we enable it.\n");
+			log_debug( "LOG_DEBUG: KQUEUE is supported ! we enable it.\n");
 			loop = ev_default_loop(EVBACKEND_KQUEUE);
 			break;
 		case 2:
-			fprintf(stderr, "\t\t[-] EPOLL is supported ! we enable it.\n");
+			log_debug("LOG_DEBUG: EPOLL is supported ! we enable it.\n");
 			loop = ev_default_loop(EVBACKEND_EPOLL);
 			break;
 		default:
-			fprintf(stderr, "\t\t[!] Neither EPOLL or KQUEUE are detected\n");
+			log_debug("LOG_DEBUG: Neither EPOLL or KQUEUE are detected\n");
 			/* trying to take the best option still available */
 			loop = ev_default_loop(0);
 	}
 
   	/* compute our response */
-	fprintf(stderr, "\n\t[+] Storing our policy in memory...\n");
+	log_debug("LOG_DEBUG: Storing our policy in memory...\n");
 	if ((policy = fopen(policyfn, "r")) == NULL) {
 		perror("Error for opening the policy file");
-		fprintf(stderr, "Please put the %s file in\n", policyfn);
+		log_emerg("LOG_EMERG: Please put the %s file in\n", policyfn);
+		logger_close();
 		exit(-1);
 	}
 	fread(&sendbuf, sizeof(sendbuf), 1, policy);
 	fclose(policy);
 	
-	fprintf(stderr, "\t[+] Binding our socket [%d]\n", sport);
+	log_debug("LOG_DEBUG: Binding our socket [%d]\n", sport);
 	/* create our socket */
 	sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock < 0)
-		err(1, "listen failed");
-
+	if (sock < 0) {
+		log_emerg("LOG_EMERG: create socket failed.\n");
+		close(sock);
+		logger_close();
+		err(1, "create socket failed");
+	}
 	listen_addr.sin_family = AF_INET;
 	listen_addr.sin_addr.s_addr = INADDR_ANY;
 	listen_addr.sin_port = htons(sport);
-	if (bind(sock, (struct sockaddr *)&listen_addr, sizeof(listen_addr)) < 0)
-		err(1, "bind failed");
-	if (listen(sock, 5) < 0)
+	if (bind(sock, (struct sockaddr *)&listen_addr, sizeof(listen_addr)) < 0) {
+		log_emerg("LOG_EMERG: bind failed.\n");
+		close(sock);
+		logger_close();
+		err(1, "bind [%d] failed.\n", sport);
+	}
+	if (listen(sock, 5) < 0) {
+		log_emerg("LOG_EMERG: listen failed.\n");
+		close(sock);
+		logger_close();
 		err(1, "listen failed");
+	}
+	if(setsockopt(sock, SOL_SOCKET, SO_LINGER,(void*)&tcp_linger, sizeof(tcp_linger)) < 0){
 
-	reuseaddr_on = 1;
-	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_on, sizeof(reuseaddr_on));
+		printf("setsockopt fail\n");
+		close(sock);
+		logger_close();
+		exit(1);
+	}
 
 	/* setting to non blocking mode */
-	if (set_nb_fd(sock) < 0)
+	if (set_nb_fd(sock) < 0) {
+		log_emerg("LOG_EMERG: failed to set non-blocking socket\n");
+		close(sock);
+		logger_close();
 		err(1, "failed to set non-blocking socket");
+	}
 
-	fprintf(stderr, "\t\t[-] Socket created and listening.\n");
+	log_debug("LOG_DEBUG: Socket created and listening.\n");
 
 	/* prepare our main loop */
-	fprintf(stderr, "\n\t[+] Ready to process clients\n");
+	log_debug("LOG_DEBUG: Ready to process clients\n");
 	while (1) {
 		net_watch.data = loop;
 		ev_io_init(&net_watch, net_cb, sock, EV_READ);
@@ -382,6 +394,7 @@ main(int argc, char *argv[])
 		ev_io_stop(loop, &net_watch);
 	}
 	/* never returns.. */
+	close(sock);
 	logger_close();
 	return 0;
 }

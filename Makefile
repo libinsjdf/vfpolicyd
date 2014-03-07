@@ -1,13 +1,18 @@
-MAKE=	make
+CC=		gcc
+SRCS=		$(wildcard *.c)
+OBJS=		$(SRCS:.c = .o)
+BIN=		fpolicyd
+CFLAGS+=	-Wall -Werror -I/usr/include/libev -fno-builtin-strlen
+LDFLAGS+=	-lev
 
-all:
-		@echo "type 'make linux' for linux version"
-		@echo "type 'make bsd' for BSD version"
-linux:
-		@${MAKE} -f Makefile.linux
-bsd:
-		@${MAKE} -f Makefile.bsd
+default:	$(OBJS)
+		$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $(BIN)
+
+%.o:		%.c
+		$(CC) -c $< $(CFLAGS)
+
+install:
+		install -m 755 fpolicyd $(RPM_INSTALL_ROOT)/usr/local/bin/fpolicyd
 clean:
-		@echo "cleaning..."
-		rm -rf *.o
-		rm -rf vfpolicyd
+		rm -f *.o
+		rm -f $(BIN)

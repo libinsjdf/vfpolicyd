@@ -9,12 +9,26 @@
 #include <unistd.h>
 #include "log.h"
 
-static struct logger g_logger;
-
+static struct logger g_logger = {0};
+extern int log_level;
 // logger util for vscprintf
 int _scnprintf(char *buf, size_t size, const char *fmt, ...);
 int _vscnprintf(char *buf, size_t size, const char *fmt, va_list args);
+void _log_stderr(const char * fmt, ...);
+extern int log_level;
 
+void  recreate_file(int signo){
+	
+	if(signo < 0) {
+		printf("recv signal error\n");
+		return;
+	}
+	if(signo == SIGUSR1){
+	logger_close();
+	logger_init(log_level, LOG_PATH);
+	}
+
+}
 int
 _scnprintf(char *buf, size_t size, const char *fmt, ...)
 {
@@ -42,7 +56,7 @@ _vscnprintf(char *buf, size_t size, const char *fmt, va_list args)
      *
      * On error, the function also returns 0. This is to allow idiom such
      * as len += _vscnprintf(...)
-     *
+ tart   *
      * See: http://lwn.net/Articles/69419/
      */
     if (i <= 0) {
@@ -97,7 +111,8 @@ void
 _log(const char * file, int line, int is_panic, const char * fmt, ...) 
 {
     struct logger * logger  = &g_logger;
-    char buf[MAX_LOG_BUF], * time_str;
+    char buf[MAX_LOG_BUF] = {0};
+    char *time_str;
     va_list args;
 
     struct tm * local;
@@ -108,7 +123,7 @@ _log(const char * file, int line, int is_panic, const char * fmt, ...)
 
     len = 0;
     size = MAX_LOG_BUF;
-
+    signal(SIGUSR1,recreate_file);
     if (logger->fd < 0) {
         return;
     }
@@ -116,14 +131,20 @@ _log(const char * file, int line, int is_panic, const char * fmt, ...)
     local = localtime(&t);
     time_str = asctime(local);
 
-    len += _scnprintf(buf + len , size - len, "[%.*s] %s %d ", strlen(time_str) -1 , time_str, file, line);
+    len += _scnprintf(buf + len , size - len, "[%.*s] ", strlen(time_str) -1 , time_str);
 
     va_start(args, fmt);
     len += _vscnprintf(buf + len, size - len, fmt, args);
     va_end(args);
 
     buf[len++] = '\n';
-
+	
+    logger->fd = open(LOG_PATH,O_WRONLY | O_APPEND | O_CREAT, 0644);
+	if(logger->fd < 0){
+		printf("open log file fail %s",LOG_PATH);
+		return;
+	}
+	
     n = write(logger->fd, buf, len);
     if (n < 0) {
         return ;
@@ -136,7 +157,8 @@ _log(const char * file, int line, int is_panic, const char * fmt, ...)
 
 void
 _log_stderr(const char * fmt, ...) {
-    char buf[MAX_LOG_BUF], * time_str;
+    char buf[MAX_LOG_BUF] = {0};
+    char *time_str;
     int len , size;
     va_list args;
     struct tm * local;
@@ -163,10 +185,10 @@ _log_stderr(const char * fmt, ...) {
     }
 }
 
-int main()
+/*int main()
 { 
     logger_init(LOG_INFO, "log");
     log_info("fuck");
     logger_close();
-}
+}*/
 
